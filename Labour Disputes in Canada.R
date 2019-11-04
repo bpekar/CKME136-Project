@@ -1,11 +1,18 @@
+# Setup
+
 install.packages("curl")
 install.packages("sqldf")
+install.packages("RSQLite")
 install.packages("randomForest")
 install.packages("AER")
+install.packages("car")
+install.packages("tibble")
+install.packages("e1071")
 library(curl)
 library(sqldf)
 library(randomForest)
 library(AER)
+library(e1071)
 
 download.file(url = "https://www150.statcan.gc.ca/n1/en/tbl/csv/14100121-eng.zip?st=1eq49VM9",
               destfile = "hours_lost.zip",
@@ -18,6 +25,8 @@ download.file(url = "https://www150.statcan.gc.ca/n1/en/tbl/csv/14100017-eng.zip
               method = "curl")
 
 
+
+# Adding hours lost due to labour disputes
 
 hours_lost <- read.csv(unz("hours_lost.zip", "14100121.csv"))
 
@@ -53,6 +62,8 @@ hours_clean <- combined[which(!startsWith(combined$date, "1976") &
 rm(i, combined, full_weeks, hours_lost, part_weeks, reduced)
 
 
+
+# Adding GDP data and finding recessions
 
 gdp <- read.csv(unz("gdp.zip", "36100103.csv"))
 
@@ -93,6 +104,8 @@ rm(i, prevRow, reduced, gdp, insert1, insert2)
 
 
 
+# Adding unemployment and labour force data
+
 unemp <- read.csv(unz("unemp.zip", "14100017.csv"))
 
 emp <- unemp[which(unemp$Labour.force.characteristics == "Labour force" &
@@ -118,6 +131,8 @@ unemp_clean[i] <- lapply(unemp_clean[i], as.character)
 rm(i, reduced, unemp, emp, rate)
 
 
+
+# Combining into a single table, removing outliers and normalizing data
 
 df <- sqldf("SELECT h.date, h.geo, h.sex, h.value, g.recession
              FROM gdp_clean g
@@ -155,13 +170,14 @@ df$sex <- normalize(df$sex)
 rm(normalize)
 
 
-plot(df[,c("hours", "unemp", "date", "sex")])
 
+# Setting up linear models and plotting data
+
+plot(df[,c("hours", "unemp", "date", "sex")])
 
 lin_model <- lm(df$hours ~ df$geo + df$sex + df$recession + df$unemp + df$date)
 summary(lin_model)
 plot(predict(lin_model),df$hours)
-
 
 df_fac<-df
 df_fac$geo<-as.factor(df_fac$geo)
@@ -171,12 +187,13 @@ rf_model$importance
 plot(predict(rf_model),df$hours)
 rm(df_fac)
 
+svr_model <- svm(df$hours ~ df$geo + df$sex + df$recession + df$unemp + df$date)
+svr_model
+plot(predict(svr_model),df$hours)
 
-ivr_model <- ivreg(df$hours ~ df$geo + df$sex + df$recession + df$unemp + df$date)
-ivr_model
-plot(predict(ivr_model),df$hours)
 
+# Comparing models
 
 sum(residuals(lin_model)^2)
 sum((df$hours-predict(rf_model))^2)
-sum(residuals(ivr_model)^2)
+sum(residuals(svr_model)^2)
